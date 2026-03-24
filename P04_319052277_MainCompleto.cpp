@@ -1,0 +1,900 @@
+/*Práctica 4: Modelado Jerárquico.
+Se implementa el uso de matrices adicionales para almacenar información de transformaciones geométricas que se quiere
+heredar entre diversas instancias para que estén unidas
+Teclas de la F a la K para rotaciones de articulaciones
+*/
+#include <stdio.h>
+#include <string.h>
+#include<cmath>
+#include<vector>
+#include <glew.h>
+#include <glfw3.h>
+//glm
+#include<glm.hpp>
+#include<gtc\matrix_transform.hpp>
+#include<gtc\type_ptr.hpp>
+#include <gtc\random.hpp>
+//clases para dar orden y limpieza al còdigo
+#include"Mesh.h"
+#include"Shader.h"
+#include"Sphere.h"
+#include"Window.h"
+#include"Camera.h"
+//tecla E: Rotar sobre el eje X
+//tecla R: Rotar sobre el eje Y
+//tecla T: Rotar sobre el eje Z
+using std::vector;
+//Dimensiones de la ventana
+const float toRadians = 3.14159265f / 180.0; //grados a radianes
+const float PI = 3.14159265f;
+GLfloat deltaTime = 0.0f;
+GLfloat lastTime = 0.0f;
+static double limitFPS = 1.0 / 60.0;
+Camera camera;
+Window mainWindow;
+vector<Mesh*> meshList;
+vector<Shader>shaderList;
+//Vertex Shader
+static const char* vShader = "shaders/shader.vert";
+static const char* fShader = "shaders/shader.frag";
+Sphere sp = Sphere(1.0, 20, 20); //recibe radio, slices, stacks
+
+void CrearCubo()
+{
+	unsigned int cubo_indices[] = {
+		// front
+		0, 1, 2,
+		2, 3, 0,
+		// right
+		1, 5, 6,
+		6, 2, 1,
+		// back
+		7, 6, 5,
+		5, 4, 7,
+		// left
+		4, 0, 3,
+		3, 7, 4,
+		// bottom
+		4, 5, 1,
+		1, 0, 4,
+		// top
+		3, 2, 6,
+		6, 7, 3
+	};
+
+	GLfloat cubo_vertices[] = {
+		// front
+		-0.5f, -0.5f,  0.5f,
+		0.5f, -0.5f,  0.5f,
+		0.5f,  0.5f,  0.5f,
+		-0.5f,  0.5f,  0.5f,
+		// back
+		-0.5f, -0.5f, -0.5f,
+		0.5f, -0.5f, -0.5f,
+		0.5f,  0.5f, -0.5f,
+		-0.5f,  0.5f, -0.5f
+	};
+	Mesh* cubo = new Mesh();
+	cubo->CreateMesh(cubo_vertices, cubo_indices, 24, 36);
+	meshList.push_back(cubo);
+}
+
+void CrearPiramideTriangular()
+{
+	unsigned int indices_piramide_triangular[] = {
+			0,1,2,
+			1,3,2,
+			3,0,2,
+			1,0,3
+
+	};
+	GLfloat vertices_piramide_triangular[] = {
+		-0.5f, -0.5f,0.0f,	//0
+		0.5f,-0.5f,0.0f,	//1
+		0.0f,0.5f, -0.25f,	//2
+		0.0f,-0.5f,-0.5f,	//3
+
+	};
+	Mesh* obj1 = new Mesh();
+	obj1->CreateMesh(vertices_piramide_triangular, indices_piramide_triangular, 12, 12);
+	meshList.push_back(obj1);
+
+}
+
+void CrearCilindro(int res, float R) {
+
+	//constantes utilizadas en los ciclos for
+	int n, i;
+	//cálculo del paso interno en la circunferencia y variables que almacenarán cada coordenada de cada vértice
+	GLfloat dt = 2 * PI / res, x, z, y = -0.5f;
+
+	vector<GLfloat> vertices;
+	vector<unsigned int> indices;
+
+	//ciclo for para crear los vértices de las paredes del cilindro
+	for (n = 0; n <= (res); n++) {
+		if (n != res) {
+			x = R * cos((n)*dt);
+			z = R * sin((n)*dt);
+		}
+		//caso para terminar el círculo
+		else {
+			x = R * cos((0) * dt);
+			z = R * sin((0) * dt);
+		}
+		for (i = 0; i < 6; i++) {
+			switch (i) {
+			case 0:
+				vertices.push_back(x);
+				break;
+			case 1:
+				vertices.push_back(y);
+				break;
+			case 2:
+				vertices.push_back(z);
+				break;
+			case 3:
+				vertices.push_back(x);
+				break;
+			case 4:
+				vertices.push_back(0.5);
+				break;
+			case 5:
+				vertices.push_back(z);
+				break;
+			}
+		}
+	}
+
+	//ciclo for para crear la circunferencia inferior
+	for (n = 0; n <= (res); n++) {
+		x = R * cos((n)*dt);
+		z = R * sin((n)*dt);
+		for (i = 0; i < 3; i++) {
+			switch (i) {
+			case 0:
+				vertices.push_back(x);
+				break;
+			case 1:
+				vertices.push_back(-0.5f);
+				break;
+			case 2:
+				vertices.push_back(z);
+				break;
+			}
+		}
+	}
+
+	//ciclo for para crear la circunferencia superior
+	for (n = 0; n <= (res); n++) {
+		x = R * cos((n)*dt);
+		z = R * sin((n)*dt);
+		for (i = 0; i < 3; i++) {
+			switch (i) {
+			case 0:
+				vertices.push_back(x);
+				break;
+			case 1:
+				vertices.push_back(0.5);
+				break;
+			case 2:
+				vertices.push_back(z);
+				break;
+			}
+		}
+	}
+
+	//Se generan los indices de los vértices
+	for (i = 0; i < vertices.size(); i++) indices.push_back(i);
+
+	//se genera el mesh del cilindro
+	Mesh* cilindro = new Mesh();
+	cilindro->CreateMeshGeometry(vertices, indices, vertices.size(), indices.size());
+	meshList.push_back(cilindro);
+}
+
+void CrearCono(int res, float R) {
+
+	//constantes utilizadas en los ciclos for
+	int n, i;
+	//cálculo del paso interno en la circunferencia y variables que almacenarán cada coordenada de cada vértice
+	GLfloat dt = 2 * PI / res, x, z, y = -0.5f;
+
+	vector<GLfloat> vertices;
+	vector<unsigned int> indices;
+
+	//caso inicial para crear el cono
+	vertices.push_back(0.0);
+	vertices.push_back(0.5);
+	vertices.push_back(0.0);
+
+	//ciclo for para crear los vértices de la circunferencia del cono
+	for (n = 0; n <= (res); n++) {
+		x = R * cos((n)*dt);
+		z = R * sin((n)*dt);
+		for (i = 0; i < 3; i++) {
+			switch (i) {
+			case 0:
+				vertices.push_back(x);
+				break;
+			case 1:
+				vertices.push_back(y);
+				break;
+			case 2:
+				vertices.push_back(z);
+				break;
+			}
+		}
+	}
+	vertices.push_back(R * cos(0) * dt);
+	vertices.push_back(-0.5);
+	vertices.push_back(R * sin(0) * dt);
+
+
+	for (i = 0; i < res + 2; i++) indices.push_back(i);
+
+	//se genera el mesh del cono
+	Mesh* cono = new Mesh();
+	cono->CreateMeshGeometry(vertices, indices, vertices.size(), res + 2);
+	meshList.push_back(cono);
+}
+
+void CrearPiramideCuadrangular()
+{
+	vector<unsigned int> piramidecuadrangular_indices = {
+		0,3,4,
+		3,2,4,
+		2,1,4,
+		1,0,4,
+		0,1,2,
+		0,2,4
+
+	};
+	vector<GLfloat> piramidecuadrangular_vertices = {
+		0.5f,-0.5f,0.5f,
+		0.5f,-0.5f,-0.5f,
+		-0.5f,-0.5f,-0.5f,
+		-0.5f,-0.5f,0.5f,
+		0.0f,0.5f,0.0f,
+	};
+	Mesh* piramide = new Mesh();
+	piramide->CreateMeshGeometry(piramidecuadrangular_vertices, piramidecuadrangular_indices, 15, 18);
+	meshList.push_back(piramide);
+}
+
+void CreateShaders()
+{
+	Shader* shader1 = new Shader();
+	shader1->CreateFromFiles(vShader, fShader);
+	shaderList.push_back(*shader1);
+
+}
+
+
+int main() {
+	mainWindow = Window(800, 600);
+	mainWindow.Initialise();
+
+	CrearCubo();//índice 0 en MeshList
+	CrearPiramideTriangular();//índice 1 en MeshList
+	CrearCilindro(20, 1.0f);//índice 2 en MeshList
+	CrearCono(25, 2.0f);//índice 3 en MeshList
+	CrearPiramideCuadrangular();//índice 4 en MeshList
+	CreateShaders();
+	CrearCilindro(10, 1.0f);
+
+	camera = Camera(glm::vec3(0.0f, 5.0f, 15.0f), glm::vec3(0.0f, 1.0f, 0.0f), -90.0f, 0.0f, 0.5f, 0.5f);
+	float rotX = 0.0f;
+	float rotY = 0.0f;
+	float rotZ = 0.0f;
+	GLuint uniformProjection = 0;
+	GLuint uniformModel = 0;
+	GLuint uniformView = 0;
+	GLuint uniformColor = 0;
+	glm::mat4 projection = glm::perspective(glm::radians(60.0f), mainWindow.getBufferWidth() / mainWindow.getBufferHeight(), 0.1f, 100.0f);
+	//glm::mat4 projection = glm::ortho(-1, 1, -1, 1, 1, 10);
+
+	//Loop mientras no se cierra la ventana
+	sp.init(); //inicializar esfera
+	sp.load();//enviar la esfera al shader
+
+
+	//*
+	// MONO
+	glm::mat4 model(1.0);
+	glm::mat4 modelaux(1.0);
+
+	// Variables para la rotación 
+	float anguloRotacionSoporte = 0.0f;
+	bool rotacionActiva = false;
+	bool teclaPresionada = false;
+
+	// Colores
+	// MOno
+	glm::vec3 colPelo = glm::vec3(0.35f, 0.20f, 0.10f);        // café oscuro (pelaje)
+	glm::vec3 colPeloClaro = glm::vec3(0.55f, 0.35f, 0.20f);   // café claro
+	glm::vec3 colCara = glm::vec3(0.90f, 0.75f, 0.55f);        // beige cara
+	glm::vec3 colHocico = glm::vec3(0.95f, 0.80f, 0.65f);      // hocico
+	glm::vec3 colArticulacion = glm::vec3(0.45f, 0.25f, 0.15f);// articulaciones
+	glm::vec3 colCobre = glm::vec3(0.7f, 0.4f, 0.2f);
+	glm::vec3 colNegro = glm::vec3(0.1f, 0.1f, 0.1f);
+
+	//While de grua
+	/*
+while (!mainWindow.getShouldClose()) {
+
+	GLfloat now = glfwGetTime();
+	deltaTime = now - lastTime;
+	deltaTime += (now - lastTime) / limitFPS;
+	lastTime = now;
+	//Recibir eventos del usuario
+	glfwPollEvents();
+	//Cámara
+	camera.keyControl(mainWindow.getsKeys(), deltaTime);
+	camera.mouseControl(mainWindow.getXChange(), mainWindow.getYChange());
+	//Limpiar la ventana
+	glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); //Se agrega limpiar el buffer de profundidad
+	shaderList[0].useShader();
+	uniformModel = shaderList[0].getModelLocation();
+	uniformProjection = shaderList[0].getProjectLocation();
+	uniformView = shaderList[0].getViewLocation();
+	uniformColor = shaderList[0].getColorLocation();
+
+	glUniformMatrix4fv(uniformProjection, 1, GL_FALSE, glm::value_ptr(projection));
+	glUniformMatrix4fv(uniformView, 1, GL_FALSE, glm::value_ptr(camera.calculateViewMatrix()));
+
+	// CABINA (NODO PADRE)
+	// =================================================
+	model = glm::mat4(1.0);
+	model = glm::translate(model, glm::vec3(0.0f, 7.0f, -4.0f));
+	// GUARDAR CABINA COMO PADRE DE TODO
+	modelauxCabina = model; //jerarquía
+	model = glm::scale(model, glm::vec3(7.0f, 4.0f, 5.0f));
+	glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+	color = glm::vec3(0.0f, 0.4f, 0.8f); // Azul brillante
+	glUniform3fv(uniformColor, 1, glm::value_ptr(color));
+	meshList[0]->RenderMesh();
+
+	// VENTANA DE LA CABINA
+	// =================================================
+	model = modelauxCabina;
+	model = glm::translate(model, glm::vec3(-1.5f, 0.5f, 2.6f));
+	model = glm::scale(model, glm::vec3(2.0f, 2.0f, 0.2f));
+	glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+	color = glm::vec3(0.3f, 0.6f, 1.0f);
+	glUniform3fv(uniformColor, 1, glm::value_ptr(color));
+	meshList[0]->RenderMesh();
+
+	// BRAZOS CON ARTICULACIONES
+	// =================================================
+	model = modelauxCabina;
+	model = glm::translate(model, glm::vec3(0.0f, 2.0f, 0.0f));
+	model = glm::rotate(model, glm::radians(mainWindow.getarticulacion1()), glm::vec3(0, 0, 1));
+	model = glm::rotate(model, glm::radians(135.0f), glm::vec3(0, 0, 1));
+
+	// PRIMER BRAZO
+	model = glm::translate(model, glm::vec3(2.5f, 0, 0));
+	modelaux = model;
+	model = glm::scale(model, glm::vec3(5.0f, 1.0f, 1.0f));
+	glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+	color = glm::vec3(0.4f, 0.7f, 1.0f); // Azul claro
+	glUniform3fv(uniformColor, 1, glm::value_ptr(color));
+	meshList[0]->RenderMesh();
+
+	// ARTICULACION 2
+	model = modelaux;
+	model = glm::translate(model, glm::vec3(2.5f, 0, 0));
+	model = glm::rotate(model, glm::radians(mainWindow.getarticulacion2()), glm::vec3(0, 0, 1));
+	modelaux = model;
+	model = glm::scale(model, glm::vec3(0.5f));
+	glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+	color = glm::vec3(0.0f, 0.2f, 0.5f); // Azul oscuro
+	glUniform3fv(uniformColor, 1, glm::value_ptr(color));
+	sp.render();
+
+	// SEGUNDO BRAZO
+	model = modelaux;
+	model = glm::translate(model, glm::vec3(0, -2.5f, 0));
+	modelaux = model;
+	model = glm::scale(model, glm::vec3(1, 5, 1));
+	glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+	color = glm::vec3(0.4f, 0.7f, 1.0f);
+	glUniform3fv(uniformColor, 1, glm::value_ptr(color));
+	meshList[0]->RenderMesh();
+
+	// ARTICULACION 3
+	model = modelaux;
+	model = glm::translate(model, glm::vec3(0, -2.5f, 0));
+	model = glm::rotate(model, glm::radians(mainWindow.getarticulacion3()), glm::vec3(0, 0, 1));
+	modelaux = model;
+	model = glm::scale(model, glm::vec3(0.5f));
+	glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+	color = glm::vec3(0.0f, 0.2f, 0.5f);
+	glUniform3fv(uniformColor, 1, glm::value_ptr(color));
+	sp.render();
+
+	// TERCER BRAZO
+	model = modelaux;
+	model = glm::translate(model, glm::vec3(0, -2.5f, 0));
+	modelaux = model;
+	model = glm::scale(model, glm::vec3(1, 5, 1));
+	glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+	color = glm::vec3(0.4f, 0.7f, 1.0f);
+	glUniform3fv(uniformColor, 1, glm::value_ptr(color));
+	meshList[0]->RenderMesh();
+
+	//ARTICULACION 4
+	model = modelaux;
+	model = glm::translate(model, glm::vec3(0, -2.5f, 0));
+	model = glm::rotate(model, glm::radians(mainWindow.getarticulacion4()), glm::vec3(0, 1, 0));
+	modelaux = model;
+	model = glm::scale(model, glm::vec3(0.5f));
+	glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+	color = glm::vec3(0.0f, 0.2f, 0.5f);
+	glUniform3fv(uniformColor, 1, glm::value_ptr(color));
+	sp.render();
+
+	// CANASTA
+	// =================================================
+	model = modelaux;
+	model = glm::translate(model, glm::vec3(0, -1.4f, 0));
+	model = glm::scale(model, glm::vec3(3.5f, 2.5f, 2.5f));
+	glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+	color = glm::vec3(0.2f, 0.5f, 0.9f); // Azul medio
+	glUniform3fv(uniformColor, 1, glm::value_ptr(color));
+	meshList[0]->RenderMesh();
+
+	// BASE
+	// =================================================
+	model = modelauxCabina;
+	model = glm::translate(model, glm::vec3(0.0f, -2.0f, 0.0f));
+	modelaux = model; // jerarquía
+	model = glm::scale(model, glm::vec3(8.0f, 3.0f, 6.0f));
+	glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+	color = glm::vec3(0.1f, 0.1f, 0.4f); // Azul cobalto
+	glUniform3fv(uniformColor, 1, glm::value_ptr(color));
+	meshList[4]->RenderMeshGeometry();
+
+	// LLANTAS
+	// =================================================
+	color = glm::vec3(0.0f, 0.0f, 0.2f); // Azul muy oscuro (casi negro)
+	glUniform3fv(uniformColor, 1, glm::value_ptr(color));
+
+	// LLANTA 1
+	model = modelaux;
+	model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0, 0, 1));
+	model = glm::rotate(model, glm::radians(90.0f), glm::vec3(1, 0, 0));
+	model = glm::translate(model, glm::vec3(-2.5f, 3.65f, 2.6f));
+	model = glm::scale(model, glm::vec3(2.0f));
+	model = glm::rotate(model, glm::radians(mainWindow.getllanta1()), glm::vec3(0, 1, 0));
+	glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+	meshList[5]->RenderMeshGeometry();
+
+	// LLANTA 2
+	model = modelaux;
+	model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0, 0, 1));
+	model = glm::rotate(model, glm::radians(90.0f), glm::vec3(1, 0, 0));
+	model = glm::translate(model, glm::vec3(-2.5f, -3.65f, 2.6f));
+	model = glm::scale(model, glm::vec3(2.0f));
+	model = glm::rotate(model, glm::radians(mainWindow.getllanta2()), glm::vec3(0, 1, 0));
+	glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+	meshList[5]->RenderMeshGeometry();
+
+	// LLANTA 3
+	model = modelaux;
+	model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0, 0, 1));
+	model = glm::rotate(model, glm::radians(90.0f), glm::vec3(1, 0, 0));
+	model = glm::translate(model, glm::vec3(-2.5f, -3.65f, -2.6f));
+	model = glm::scale(model, glm::vec3(2.0f));
+	model = glm::rotate(model, glm::radians(mainWindow.getllanta3()), glm::vec3(0, 1, 0));
+	glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+	meshList[5]->RenderMeshGeometry();
+
+	// LLANTA 4
+	model = modelaux;
+	model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0, 0, 1));
+	model = glm::rotate(model, glm::radians(90.0f), glm::vec3(1, 0, 0));
+	model = glm::translate(model, glm::vec3(-2.5f, 3.65f, -2.6f));
+	model = glm::scale(model, glm::vec3(2.0f));
+	model = glm::rotate(model, glm::radians(mainWindow.getllanta4()), glm::vec3(0, 1, 0));
+	glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+	meshList[5]->RenderMeshGeometry();
+
+	glUseProgram(0);
+	mainWindow.swapBuffers();
+}
+*/
+
+	while (!mainWindow.getShouldClose())
+	{
+		GLfloat now = glfwGetTime();
+		deltaTime = now - lastTime;
+		lastTime = now;
+
+		glfwPollEvents();
+
+		// Para rotación con R
+		if (mainWindow.getsKeys()[GLFW_KEY_R]) {
+			if (!teclaPresionada) {
+				rotacionActiva = !rotacionActiva;
+				teclaPresionada = true;
+			}
+		}
+		else {
+			teclaPresionada = false;
+		}
+
+		if (rotacionActiva) {
+			anguloRotacionSoporte += 45.0f * deltaTime;
+		}
+
+		camera.keyControl(mainWindow.getsKeys(), deltaTime);
+		camera.mouseControl(mainWindow.getXChange(), mainWindow.getYChange());
+
+		glClearColor(0.85f, 0.85f, 0.88f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		shaderList[0].useShader();
+		uniformModel = shaderList[0].getModelLocation();
+		uniformProjection = shaderList[0].getProjectLocation();
+		uniformView = shaderList[0].getViewLocation();
+		uniformColor = shaderList[0].getColorLocation();
+
+		glUniformMatrix4fv(uniformProjection, 1, GL_FALSE, glm::value_ptr(projection));
+		glUniformMatrix4fv(uniformView, 1, GL_FALSE, glm::value_ptr(camera.calculateViewMatrix()));
+
+		// Torso
+		model = modelaux;
+		model = glm::translate(model, glm::vec3(-1.5f, 0.5f, 0.0f));
+		glm::mat4 chestAux = model;
+		model = glm::scale(model, glm::vec3(5.0f, 5.0f, 5.5f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPelo));
+		meshList[0]->RenderMesh();
+
+		model = modelaux;
+		model = glm::translate(model, glm::vec3(2.5f, -0.5f, 0.0f));
+		glm::mat4 pelvisAux = model;
+		model = glm::scale(model, glm::vec3(4.0f, 3.0f, 4.5f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPelo));
+		meshList[0]->RenderMesh();
+
+		// Cuello y cabeza
+		model = chestAux;
+		model = glm::translate(model, glm::vec3(-1.0f, 2.8f, 0.0f));
+		model = glm::rotate(model, glm::radians(mainWindow.getrotay()), glm::vec3(0, 1, 0));
+
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colArticulacion));
+		sp.render();
+
+		glm::mat4 neckJoint = model;
+		model = glm::translate(model, glm::vec3(-0.1f, 0.8f, 0.0f));
+		model = glm::scale(model, glm::vec3(1.2f, 1.5f, 1.2f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPelo));
+		meshList[0]->RenderMesh();
+
+		model = neckJoint;
+		model = glm::translate(model, glm::vec3(-1.0f, 4.0f, 0.0f));
+		glm::mat4 headRoot = model;
+		model = glm::scale(model, glm::vec3(3.0f, 3.0f, 3.0f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPelo));
+		sp.render();
+
+		// Boca
+		model = headRoot;
+		model = glm::translate(model, glm::vec3(-1.8f, -1.0f, 0.0f));
+		model = glm::scale(model, glm::vec3(2.0f, 1.0f, 2.5f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPeloClaro));
+		sp.render();
+
+		// Ojos
+		for (float side : {-1.2f, 1.2f}) {
+			model = headRoot;
+			model = glm::translate(model, glm::vec3(-2.2f, 1.0f, side));
+			glm::mat4 eyeRoot = model;
+			model = glm::scale(model, glm::vec3(0.5f, 2.0f, 2.0f));
+			glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+			glUniform3fv(uniformColor, 1, glm::value_ptr(colArticulacion));
+			meshList[0]->RenderMesh();
+
+			model = eyeRoot;
+			model = glm::translate(model, glm::vec3(-0.3f, 0.0f, 0.0f));
+			model = glm::scale(model, glm::vec3(0.9f, 0.9f, 0.9f));
+			glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+			glUniform3fv(uniformColor, 1, glm::value_ptr(colNegro));
+			sp.render();
+		}
+
+		// Orejas
+		for (float side : {-1.8f, 1.8f}) {
+			model = headRoot;
+			model = glm::translate(model, glm::vec3(0.5f, 1.2f, side * 1.5f));
+			model = glm::scale(model, glm::vec3(1.2f, 1.5f, 1.2f));
+			glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+			glUniform3fv(uniformColor, 1, glm::value_ptr(colPeloClaro));
+			sp.render();
+		}
+
+		// Pata de enfrente izquierda
+		model = chestAux;
+		model = glm::translate(model, glm::vec3(-1.5f, -2.0f, -2.8f));
+		// Articulación 1 - Hombro Izquierdo
+		model = glm::rotate(model, glm::radians(mainWindow.getarticulacion1()), glm::vec3(0, 0, 1));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPelo));
+		sp.render();
+
+		// Brazo - Parte superior
+		model = glm::translate(model, glm::vec3(0.0f, -1.8f, 0.0f));
+		glm::mat4 armL = model;
+		model = glm::scale(model, glm::vec3(1.5f, 3.5f, 1.5f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPelo));
+		meshList[0]->RenderMesh();
+
+		// Articulación 2 - Codo izquierdo
+		model = armL;
+		model = glm::translate(model, glm::vec3(0.0f, -1.8f, 0.0f));
+		model = glm::rotate(model, glm::radians(mainWindow.getarticulacion2()), glm::vec3(0, 0, 1));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colArticulacion));
+		sp.render();
+
+		// Brazo - Parte inferior
+		model = glm::translate(model, glm::vec3(0.0f, -1.5f, 0.0f));
+		glm::mat4 forearmL = model;
+		model = glm::scale(model, glm::vec3(1.3f, 3.0f, 1.3f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPelo));
+		meshList[0]->RenderMesh();
+
+		// Articulación 3 - Tobillo izquierdo
+		model = forearmL;
+		model = glm::translate(model, glm::vec3(0.0f, -1.5f, 0.0f));
+		model = glm::rotate(model, glm::radians(mainWindow.getarticulacion3()), glm::vec3(0, 0, 1));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colArticulacion));
+		sp.render();
+
+		// Pie Izquierdo
+		model = glm::translate(model, glm::vec3(-0.5f, -0.6f, 0.0f));
+		model = glm::scale(model, glm::vec3(2.0f, 0.6f, 1.8f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPeloClaro));
+		meshList[0]->RenderMesh();
+
+
+		// Pata de enfrente derecha
+		model = chestAux;
+		model = glm::translate(model, glm::vec3(-1.5f, -2.0f, 2.8f));
+		// Articulación 4 - Hombro derecho
+		model = glm::rotate(model, glm::radians(mainWindow.getarticulacion4()), glm::vec3(0, 0, 1));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPelo));
+		sp.render();
+
+		// Brazo - Parte superior
+		model = glm::translate(model, glm::vec3(0.0f, -1.8f, 0.0f));
+		glm::mat4 armR = model;
+		model = glm::scale(model, glm::vec3(1.5f, 3.5f, 1.5f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPelo));
+		meshList[0]->RenderMesh();
+
+		// Articulación 5 - Codo derecho
+		model = armR;
+		model = glm::translate(model, glm::vec3(0.0f, -1.8f, 0.0f));
+		model = glm::rotate(model, glm::radians(mainWindow.getarticulacion5()), glm::vec3(0, 0, 1));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colArticulacion));
+		sp.render();
+
+		// Brazo - Parte inferior
+		model = glm::translate(model, glm::vec3(0.0f, -1.5f, 0.0f));
+		glm::mat4 forearmR = model;
+		model = glm::scale(model, glm::vec3(1.3f, 3.0f, 1.3f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPelo));
+		meshList[0]->RenderMesh();
+
+		// Articulación 6 - Tobillo derecho
+		model = forearmR;
+		model = glm::translate(model, glm::vec3(0.0f, -1.5f, 0.0f));
+		model = glm::rotate(model, glm::radians(mainWindow.getarticulacion6()), glm::vec3(0, 0, 1));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colArticulacion));
+		sp.render();
+
+		// Pie Derecho
+		model = glm::translate(model, glm::vec3(-0.5f, -0.6f, 0.0f));
+		model = glm::scale(model, glm::vec3(2.0f, 0.6f, 1.8f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPeloClaro));
+		meshList[0]->RenderMesh();
+
+		// Pata de atras izquierda
+		model = pelvisAux;
+		model = glm::translate(model, glm::vec3(1.5f, -1.5f, -2.5f));
+		// Articulación 7 - Cadera izquierda
+		model = glm::rotate(model, glm::radians(mainWindow.getarticulacion7()), glm::vec3(0, 0, 1));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPelo));
+		sp.render();
+
+		model = glm::translate(model, glm::vec3(0.0f, -1.5f, 0.0f));
+		glm::mat4 legL = model;
+		model = glm::scale(model, glm::vec3(1.5f, 3.0f, 1.5f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPelo));
+		meshList[0]->RenderMesh();
+
+		model = legL;
+		model = glm::translate(model, glm::vec3(0.0f, -1.5f, 0.0f));
+		// Articulación 8 - Rodilla Izquierda
+		model = glm::rotate(model, glm::radians(mainWindow.getarticulacion8()), glm::vec3(0, 0, 1));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colArticulacion));
+		sp.render();
+
+		model = glm::translate(model, glm::vec3(0.0f, -1.2f, 0.0f));
+		glm::mat4 calfL = model;
+		model = glm::scale(model, glm::vec3(1.3f, 2.5f, 1.3f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPelo));
+		meshList[0]->RenderMesh();
+
+		model = calfL;
+		model = glm::translate(model, glm::vec3(0.0f, -1.2f, 0.0f));
+		// Articulación 9 - Tobillo izquierdo
+		model = glm::rotate(model, glm::radians(mainWindow.getarticulacion9()), glm::vec3(0, 0, 1));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colArticulacion));
+		sp.render();
+
+		// Pie izquierdo
+		model = glm::translate(model, glm::vec3(-0.5f, -0.6f, 0.0f));
+		model = glm::scale(model, glm::vec3(2.0f, 0.6f, 1.8f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPeloClaro));
+		meshList[0]->RenderMesh();
+
+		// Pata de atras derecha
+
+		model = pelvisAux;
+		model = glm::translate(model, glm::vec3(1.5f, -1.5f, 2.5f));
+		// Articulación 10 - Cadera derecha
+		model = glm::rotate(model, glm::radians(mainWindow.getarticulacion10()), glm::vec3(0, 0, 1));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colArticulacion));
+		sp.render();
+
+		model = glm::translate(model, glm::vec3(0.0f, -1.5f, 0.0f));
+		glm::mat4 legR = model;
+		model = glm::scale(model, glm::vec3(1.5f, 3.0f, 1.5f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPelo));
+		meshList[0]->RenderMesh();
+
+		model = legR;
+		model = glm::translate(model, glm::vec3(0.0f, -1.5f, 0.0f));
+		// Articulación 11 - Rodilla derecha
+		model = glm::rotate(model, glm::radians(mainWindow.getarticulacion11()), glm::vec3(0, 0, 1));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colArticulacion));
+		sp.render();
+
+		model = glm::translate(model, glm::vec3(0.0f, -1.2f, 0.0f));
+		glm::mat4 calfR = model;
+		model = glm::scale(model, glm::vec3(1.3f, 2.5f, 1.3f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPelo));
+		meshList[0]->RenderMesh();
+
+		model = calfR;
+		model = glm::translate(model, glm::vec3(0.0f, -1.2f, 0.0f));
+		// Articulación 12 - Tobillo derecho
+		model = glm::rotate(model, glm::radians(mainWindow.getarticulacion12()), glm::vec3(0, 0, 1));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colArticulacion));
+		sp.render();
+
+		// Pie derecho
+		model = glm::translate(model, glm::vec3(-0.5f, -0.6f, 0.0f));
+		model = glm::scale(model, glm::vec3(2.0f, 0.6f, 1.8f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPeloClaro));
+		meshList[0]->RenderMesh();
+
+
+		// Cola con articulaciones
+		model = pelvisAux;
+		model = glm::translate(model, glm::vec3(2.0f, 1.0f, 0.0f));
+
+		// Articulación 13 - Z
+		model = glm::rotate(model, glm::radians(mainWindow.getarticulacion13()), glm::vec3(0, 0, 1));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(glm::scale(model, glm::vec3(0.5f))));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPeloClaro));
+		sp.render(); // Esfera unión
+		model = glm::translate(model, glm::vec3(0.6f, 0.0f, 0.0f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(glm::scale(model, glm::vec3(1.4f, 0.5f, 0.5f))));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colArticulacion));
+		meshList[0]->RenderMesh();
+		model = glm::translate(model, glm::vec3(0.8f, 0.0f, 0.0f));
+
+		// Articulación 14 - X
+		model = glm::rotate(model, glm::radians(mainWindow.getarticulacion14()), glm::vec3(0, 0, 1));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(glm::scale(model, glm::vec3(0.5f))));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPeloClaro));
+		sp.render();
+		model = glm::translate(model, glm::vec3(0.6f, 0.0f, 0.0f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(glm::scale(model, glm::vec3(1.4f, 0.5f, 0.5f))));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colArticulacion));
+		meshList[0]->RenderMesh();
+		model = glm::translate(model, glm::vec3(0.8f, 0.0f, 0.0f));
+
+		// Articulación 15 - C
+		model = glm::rotate(model, glm::radians(mainWindow.getarticulacion15()), glm::vec3(0, 0, 1));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(glm::scale(model, glm::vec3(0.5f))));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPeloClaro));
+		sp.render();
+		model = glm::translate(model, glm::vec3(0.6f, 0.0f, 0.0f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(glm::scale(model, glm::vec3(1.4f, 0.5f, 0.5f))));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colArticulacion));
+		meshList[0]->RenderMesh();
+		model = glm::translate(model, glm::vec3(0.8f, 0.0f, 0.0f));
+
+		// Articulación 16 - V
+		model = glm::rotate(model, glm::radians(mainWindow.getarticulacion16()), glm::vec3(0, 0, 1));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(glm::scale(model, glm::vec3(0.5f))));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPeloClaro));
+		sp.render();
+		model = glm::translate(model, glm::vec3(0.6f, 0.0f, 0.0f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(glm::scale(model, glm::vec3(1.4f, 0.5f, 0.5f))));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colArticulacion));
+		meshList[0]->RenderMesh();
+		model = glm::translate(model, glm::vec3(0.8f, 0.0f, 0.0f));
+
+		// Articulación 17 - B
+		model = glm::rotate(model, glm::radians(mainWindow.getarticulacion17()), glm::vec3(0, 0, 1));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(glm::scale(model, glm::vec3(0.5f))));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPeloClaro));
+		sp.render();
+		model = glm::translate(model, glm::vec3(0.6f, 0.0f, 0.0f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(glm::scale(model, glm::vec3(1.4f, 0.5f, 0.5f))));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colArticulacion));
+		meshList[0]->RenderMesh();
+		model = glm::translate(model, glm::vec3(0.8f, 0.0f, 0.0f));
+
+		// Articulación 18 - N
+		model = glm::rotate(model, glm::radians(mainWindow.getarticulacion18()), glm::vec3(0, 0, 1));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(glm::scale(model, glm::vec3(0.5f))));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPeloClaro));
+		sp.render();
+		model = glm::translate(model, glm::vec3(0.6f, 0.0f, 0.0f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(glm::scale(model, glm::vec3(1.4f, 0.5f, 0.5f))));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colArticulacion));
+		meshList[0]->RenderMesh();
+		model = glm::translate(model, glm::vec3(0.8f, 0.0f, 0.0f));
+
+		// Articulación 19 - M
+		model = glm::rotate(model, glm::radians(mainWindow.getarticulacion19()), glm::vec3(0, 0, 1));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(glm::scale(model, glm::vec3(0.5f))));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colPeloClaro));
+		sp.render();
+		model = glm::translate(model, glm::vec3(0.6f, 0.0f, 0.0f));
+		glUniformMatrix4fv(uniformModel, 1, GL_FALSE, glm::value_ptr(glm::scale(model, glm::vec3(1.4f, 0.5f, 0.5f))));
+		glUniform3fv(uniformColor, 1, glm::value_ptr(colArticulacion));
+		meshList[0]->RenderMesh();
+
+
+		glUseProgram(0);
+		mainWindow.swapBuffers();
+	}
+	return 0;
+}
